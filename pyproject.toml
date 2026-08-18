@@ -1,0 +1,7 @@
+[project]
+name = "ssh-pwn"
+version = "0.1.0"
+description = "A tool to enum linux hosts over ssh"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = ["paramiko", "pyyaml"]

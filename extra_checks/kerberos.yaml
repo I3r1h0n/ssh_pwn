@@ -1,0 +1,12 @@
+# Kerberos checks
+
+- name: Klist enum
+  cmd: klist
+  only_sudo: true
+
+# krb5.conf looks too big in output, temporary commented
+#- name: Krb5 config dump
+#  cmd: cat /etc/krb5.conf 2>/dev/null || echo 'No krb5.conf found'
+
+- name: Klist keytab check
+  cmd: klist -k /etc/krb5.keytab 2>/dev/null || echo 'No keytab found'

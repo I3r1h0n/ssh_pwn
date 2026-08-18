@@ -1,0 +1,19 @@
+# Local Privilege Escalation checks
+
+- name: CopyFail
+  script: lpe_scripts/copyfail_check.sh
+
+- name: DirtyFrag
+  script: lpe_scripts/dirtyfrag_check.sh
+
+- name: FDPWN
+  script: lpe_scripts/fdpwn_check.sh
+
+- name: Fragnesia
+  script: lpe_scripts/fragnesia_check.sh
+
+- name: PackageKit
+  script: lpe_scripts/packagekit_check.sh
+
+- name: PwnKit
+  script: lpe_scripts/pwnkit_check.sh
