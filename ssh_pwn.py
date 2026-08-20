@@ -48,7 +48,8 @@ def parse_args():
                    help="Comma-separated YAML files and/or directories with extra checks")
     p.add_argument("--timeout", type=int, default=40, metavar="SEC",
                    help="Timeout in seconds for remote commands (default: 40)")
-    p.add_argument("--verbose", action="store_true", help="Print connection details and command output")
+    p.add_argument("-v", "--verbose", type=int, choices=[0, 1, 2], default=1, metavar="LEVEL",
+                   help="Verbose level: 0=quiet, 1=default, 2=debug")
 
     return p.parse_args()
 
@@ -184,13 +185,13 @@ def ssh_connect(host, port, username, password, key, passphrase, verbose):
         kw["look_for_keys"] = True
         kw["allow_agent"] = True
 
-    if verbose:
-        auth = "password" if password else f"key ({key_path})" if key_path else "default keys/agent"
+    if verbose >= 2:
+        auth = "password" if password else "key" if key else "default keys/agent"
         print(f"  [*] Connecting {username}@{host}:{port}  auth={auth}")
 
     client.connect(**kw)
 
-    if verbose:
+    if verbose >= 2:
         print("  [+] Connected")
 
     return client
@@ -204,7 +205,7 @@ def run_cmd(client, cmd, verbose=False, timeout=40):
     err = stderr.read().decode(errors="replace").strip()
     code = stdout.channel.recv_exit_status()
 
-    if verbose:
+    if verbose >= 2:
         print(f"  [cmd] {cmd}  (exit {code})")
         for ln in out.splitlines():
             print(f"    | {ln}")
@@ -225,7 +226,7 @@ def run_sudo_stdin(client, cmd, password, verbose=False, timeout=40):
     err = stderr.read().decode(errors="replace").strip()
     code = stdout.channel.recv_exit_status()
 
-    if verbose:
+    if verbose >= 2:
         print(f"  [cmd] {full}  (exit {code})")
         for ln in out.splitlines():
             print(f"    | {ln}")
@@ -480,6 +481,24 @@ def print_result(result):
     print(f"{'=' * 55}")
 
 
+def print_result_line(result):
+    tag = f"{result['host']}:{result['port']}"
+
+    if not result["success"]:
+        print(f"[-] {tag}  FAILED: {result['error']}")
+        return
+
+    info = result["info"]
+
+    if info["can_sudo"]:
+        can_sudo_str = f"Yes ({ROOT_METHOD_LABEL.get(info['root_method'], info['root_method'])})"
+    else:
+        can_sudo_str = "No"
+
+    print(f"[+] {tag}  user={info['user']} root={'Yes' if info['is_root'] else 'No'} "
+          f"sudo={can_sudo_str} os={info['os_release']}")
+
+
 def write_json(results, path):
     # combine info into each result for cleaner json
     out = []
@@ -534,18 +553,21 @@ def main():
 
         try:
             client = ssh_connect(
-                host, 
-                port, 
-                username, 
+                host,
+                port,
+                username,
                 password,
                 key if not password else None,
                 passphrase if not password else None,
-                args.verbose
+                args.verbose,
             )
         except Exception as e:
             result["success"] = False
             result["error"] = str(e)
-            print_result(result)
+            if args.verbose == 0:
+                print_result_line(result)
+            else:
+                print_result(result)
             results.append(result)
             continue
 
@@ -560,7 +582,10 @@ def main():
         finally:
             client.close()
 
-        print_result(result)
+        if args.verbose == 0:
+            print_result_line(result)
+        else:
+            print_result(result)
         results.append(result)
 
     # summary
@@ -569,9 +594,13 @@ def main():
     print(f"\n[*] Done: {ok} succeeded, {fail} failed out of {len(results)}")
 
     # output json dump
-    if args.o:
-        write_json(results, args.o)
-        print(f"[*] JSON results written to {args.o}")
+    out_path = args.o
+    if args.verbose == 0 and not out_path:
+        out_path = "output.json"
+
+    if out_path:
+        write_json(results, out_path)
+        print(f"[*] JSON results written to {out_path}")
 
 if __name__ == "__main__":
     main()
