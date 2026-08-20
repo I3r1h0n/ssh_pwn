@@ -1,8 +1,8 @@
 # Container related checks
 
 - name: Docker
-  script: scripts/docker_check.sh
+  script: misc_scripts/docker_check.sh
   sudo: true
 
 - name: Kubernetes
-  script: scripts/k8s_check.sh
+  script: misc_scripts/k8s_check.sh

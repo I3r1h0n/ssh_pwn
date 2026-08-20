@@ -39,7 +39,15 @@ echo "--- DOCKER PRIVILEGE CHECK ---"
 # Check for Docker socket access
 if [ -S /var/run/docker.sock ] && [ -w /var/run/docker.sock ]; then
     echo "WARNING: User can write to Docker socket (/var/run/docker.sock)"
-    echo "         This allows container escape and root privilege escalation"
+fi
+
+echo ""
+echo "--- RUNNING CONTAINERS ---"
+containers=$(docker ps --format "{{.Names}} | {{.Image}}" 2>/dev/null)
+if [ -z "$containers" ]; then
+    echo "No running containers"
+else
+    echo "$containers"
 fi
 
 exit 0
