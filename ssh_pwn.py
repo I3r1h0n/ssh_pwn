@@ -46,6 +46,8 @@ def parse_args():
     p.add_argument("-o", metavar="FILE", help="Write JSON results to this file")
     p.add_argument("--extra-checks", metavar="PATHS",
                    help="Comma-separated YAML files and/or directories with extra checks")
+    p.add_argument("--timeout", type=int, default=40, metavar="SEC",
+                   help="Timeout in seconds for remote commands (default: 40)")
     p.add_argument("--verbose", action="store_true", help="Print connection details and command output")
 
     return p.parse_args()
@@ -196,8 +198,8 @@ def ssh_connect(host, port, username, password, key, passphrase, verbose):
 
 # Command execution
 
-def run_cmd(client, cmd, verbose=False):
-    _, stdout, stderr = client.exec_command(cmd, timeout=15)
+def run_cmd(client, cmd, verbose=False, timeout=40):
+    _, stdout, stderr = client.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode(errors="replace").strip()
     err = stderr.read().decode(errors="replace").strip()
     code = stdout.channel.recv_exit_status()
@@ -212,9 +214,9 @@ def run_cmd(client, cmd, verbose=False):
     return out, err, code
 
 
-def run_sudo_stdin(client, cmd, password, verbose=False):
+def run_sudo_stdin(client, cmd, password, verbose=False, timeout=40):
     full = f"sudo -S {cmd}"
-    stdin, stdout, stderr = client.exec_command(full, timeout=15)
+    stdin, stdout, stderr = client.exec_command(full, timeout=timeout)
     stdin.write(password + "\n")
     stdin.flush()
     stdin.channel.shutdown_write()
@@ -237,8 +239,8 @@ def run_sudo_stdin(client, cmd, password, verbose=False):
 
 # Enum
 
-def check_root(client, password, verbose):
-    out, _, _ = run_cmd(client, "id -u", verbose)
+def check_root(client, password, verbose, timeout=40):
+    out, _, _ = run_cmd(client, "id -u", verbose, timeout=timeout)
     try:
         uid = int(out)
     except ValueError:
@@ -248,13 +250,13 @@ def check_root(client, password, verbose):
         return True, True, "direct"
 
     # passwordless sudo
-    out, _, code = run_cmd(client, "sudo -n id -u 2>/dev/null", verbose)
+    out, _, code = run_cmd(client, "sudo -n id -u 2>/dev/null", verbose, timeout=timeout)
     if code == 0 and out.strip() == "0":
         return False, True, "sudo_nopasswd"
 
     # sudo with password
     if password:
-        out, _, code = run_sudo_stdin(client, "id -u", password, verbose)
+        out, _, code = run_sudo_stdin(client, "id -u", password, verbose, timeout=timeout)
         if code == 0 and out.strip() == "0":
             return False, True, "sudo_password"
 
@@ -344,31 +346,32 @@ def load_extra_checks(paths_str):
     return all_checks
 
 
-def enumerate_host(client, password, verbose, extra_checks=None):
+def enumerate_host(client, password, verbose, extra_checks=None, timeout=40):
     info = {}
 
-    out, _, _ = run_cmd(client, "whoami", verbose)
+    out, _, _ = run_cmd(client, "whoami", verbose, timeout=timeout)
     info["user"] = out
 
-    is_root, can_sudo, root_method = check_root(client, password, verbose)
+    is_root, can_sudo, root_method = check_root(client, password, verbose, timeout=timeout)
     info["is_root"] = is_root
     info["can_sudo"] = can_sudo
     info["root_method"] = root_method
 
-    out, _, _ = run_cmd(client, "cat /etc/hostname", verbose)
+    out, _, _ = run_cmd(client, "cat /etc/hostname", verbose, timeout=timeout)
     info["hostname"] = out
 
-    out, _, _ = run_cmd(client, "cat /etc/os-release", verbose)
+    out, _, _ = run_cmd(client, "cat /etc/os-release", verbose, timeout=timeout)
     info["os_release_raw"] = out
     info["os_release"] = parse_os_pretty_name(out)
 
-    out, _, _ = run_cmd(client, "uname -a", verbose)
+    out, _, _ = run_cmd(client, "uname -a", verbose, timeout=timeout)
     info["kernel"] = out
 
     out, _, code = run_cmd(
         client,
         "python3 --version 2>/dev/null || python --version 2>/dev/null",
         verbose,
+        timeout=timeout,
     )
     info["python_version"] = out if code == 0 and out else None
 
@@ -401,16 +404,16 @@ def enumerate_host(client, password, verbose, extra_checks=None):
                     base_cmd = chk["cmd"]
 
                 if root_method == "sudo_nopasswd":
-                    out, err, code = run_cmd(client, f"sudo -n {base_cmd}", verbose)
+                    out, err, code = run_cmd(client, f"sudo -n {base_cmd}", verbose, timeout=timeout)
                 else:
-                    out, err, code = run_sudo_stdin(client, base_cmd, password, verbose)
+                    out, err, code = run_sudo_stdin(client, base_cmd, password, verbose, timeout=timeout)
             else:
                 if is_script:
                     heredoc = f"<<'__SSH_PWN_EOF__'\n{chk['_script_body']}\n__SSH_PWN_EOF__"
                     cmd = f"bash {heredoc}"
                 else:
                     cmd = chk["cmd"]
-                out, err, code = run_cmd(client, cmd, verbose)
+                out, err, code = run_cmd(client, cmd, verbose, timeout=timeout)
 
             info["extra_checks"].append({
                 "name": chk["name"],
@@ -547,7 +550,7 @@ def main():
             continue
 
         try:
-            info = enumerate_host(client, password, args.verbose, extra_checks)
+            info = enumerate_host(client, password, args.verbose, extra_checks, timeout=args.timeout)
             result["success"] = True
             result["error"] = None
             result["info"] = info

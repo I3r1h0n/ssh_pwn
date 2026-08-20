@@ -3,10 +3,6 @@
   script: enum_script/bash_history.sh
   sudo: true
 
-- name: certificates
-  script: enum_script/certificates_enum.sh
-  sudo: true
-
 - name: environments
   script: enum_script/env_enum.sh
   sudo: true

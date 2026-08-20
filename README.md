@@ -17,7 +17,7 @@ Currently it's "paramiko", "yaml", and python 3+. Wonder how this tool works? Re
 ## usage
 Here's the help output for ya:
 ```
-usage: ssh_pwn.py [-h] [-u USER] [-p PASS] [-i KEY] (-t TARGET | -tL FILE) [-o FILE] [--extra-checks PATHS] [--verbose]
+usage: ssh_pwn.py [-h] [-u USER] [-p PASS] [-i KEY] (-t TARGET | -tL FILE) [-o FILE] [--extra-checks PATHS] [--timeout SEC] [--verbose]
 
 A tool to enum linux hosts over ssh
 
@@ -30,6 +30,7 @@ options:
   -tL FILE              File with targets, one per line
   -o FILE               Write JSON results to this file
   --extra-checks PATHS  Comma-separated YAML files and/or directories with extra checks
+  --timeout SEC         Timeout in seconds for remote commands (default: 40)
   --verbose             Print connection details and command output
 
 target formats (for -t and lines in -tL file):
