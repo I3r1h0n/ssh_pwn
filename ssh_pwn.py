@@ -143,9 +143,26 @@ def check_key_passphrase(key_path):
     sys.exit(1)
 
 
+def load_ssh_key(key_path: str, passphrase: str | None = None) -> paramiko.PKey:
+    key_classes = [
+        paramiko.RSAKey,
+        paramiko.Ed25519Key,
+        paramiko.ECDSAKey
+    ]
+
+    for key_class in key_classes:
+        try:
+            return key_class.from_private_key_file(key_path, password=passphrase)
+        except (paramiko.SSHException, ValueError):
+            continue
+
+    raise paramiko.SSHException(
+        f"Unable to load key from {key_path} — unsupported or invalid key format"
+    )
+
 # SSH
 
-def ssh_connect(host, port, username, password, key_path, passphrase, verbose):
+def ssh_connect(host, port, username, password, key, passphrase, verbose):
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -155,8 +172,8 @@ def ssh_connect(host, port, username, password, key_path, passphrase, verbose):
         kw["password"] = password
         kw["look_for_keys"] = False
         kw["allow_agent"] = False
-    elif key_path:
-        kw["key_filename"] = key_path
+    elif key:
+        kw["pkey"] = key
         if passphrase:
             kw["passphrase"] = passphrase
         kw["look_for_keys"] = False
@@ -485,11 +502,14 @@ def main():
     if not args.p:
         if not key_path:
             key_path = find_default_key()
+        
         if key_path:
             if args.i and not os.path.isfile(key_path):
                 print(f"[-] Key file not found: {key_path}")
                 sys.exit(1)
             passphrase = check_key_passphrase(key_path)
+
+        key = load_ssh_key(key_path, passphrase)
 
     # load extra checks
     extra_checks = None
@@ -515,7 +535,7 @@ def main():
                 port, 
                 username, 
                 password,
-                key_path if not password else None,
+                key if not password else None,
                 passphrase if not password else None,
                 args.verbose
             )
