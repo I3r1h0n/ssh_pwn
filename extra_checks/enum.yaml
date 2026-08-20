@@ -10,3 +10,6 @@
 - name: secrets
   script: enum_script/secrets_enum.sh
   sudo: true
+
+- name: interfaces
+  script: enum_script/interfaces.sh

@@ -2,36 +2,52 @@
 #
 # CAREFULLY VIBECODED
 #
-# Kubernetes Presence and Configuration Checker
+# Kubernetes checker
 
-# Check if we're running in Kubernetes by looking for the service account
-# This is the most reliable indicator without requiring kubectl
-if [ ! -f /var/run/secrets/kubernetes.io/serviceaccount/token ] && \
-   [ ! -f /var/run/secrets/kubernetes.io/serviceaccount/ca.crt ]; then
-    echo "KUBERNETES: Not detected (no service account mounted)"
-    exit 1
+detected=""
+
+# service account (inside a pod)
+if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ] || \
+   [ -f /var/run/secrets/kubernetes.io/serviceaccount/ca.crt ]; then
+    detected="service_account"
+    ns=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null)
 fi
 
-echo "KUBERNETES: Detected (running inside a pod)"
-
-# Try to get namespace from the service account
-if [ -f /var/run/secrets/kubernetes.io/serviceaccount/namespace ]; then
-    namespace=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null)
-    echo "NAMESPACE: $namespace"
-else
-    echo "NAMESPACE: Unknown"
+# KUBERNETES_SERVICE_HOST env var (set automatically inside pods)
+if [ -n "$KUBERNETES_SERVICE_HOST" ]; then
+    detected="${detected:+$detected,}env_var"
 fi
 
-# Check if kubectl is available
-if command -v kubectl >/dev/null 2>&1; then
-    kubectl_ver=$(kubectl version --client -o json 2>/dev/null | grep -oE '"gitVersion":"[^"]+"' | cut -d'"' -f4 2>/dev/null)
-    if [ -n "$kubectl_ver" ]; then
-        echo "KUBECTL: $kubectl_ver"
-    else
-        echo "KUBECTL: Installed (version unknown)"
+# kubelet process running
+if pgrep -x kubelet >/dev/null 2>&1; then
+    detected="${detected:+$detected,}kubelet"
+fi
+
+# kubeconfig present
+for cfg in "$HOME/.kube/config" "/etc/kubernetes/admin.conf"; do
+    if [ -f "$cfg" ]; then
+        detected="${detected:+$detected,}kubeconfig($cfg)"
+        break
     fi
-else
-    echo "KUBECTL: Not installed"
+done
+
+# kubectl available
+if command -v kubectl >/dev/null 2>&1; then
+    kubectl_ver=$(kubectl version --client --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    detected="${detected:+$detected,}kubectl(${kubectl_ver:-unknown})"
 fi
+
+# cni config
+if [ -d /etc/cni/net.d ] && ls /etc/cni/net.d/*.conf >/dev/null 2>&1; then
+    detected="${detected:+$detected,}cni"
+fi
+
+if [ -z "$detected" ]; then
+    echo "K8S: Not detected"
+    exit 0
+fi
+
+echo "K8S: Detected ($detected)"
+[ -n "$ns" ] && echo "K8S_NAMESPACE: $ns"
 
 exit 0
